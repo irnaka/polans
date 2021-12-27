@@ -2,6 +2,7 @@ from obspy import read
 from obspy.signal.trigger import classic_sta_lta, trigger_onset
 from obspy.signal.polarization import polarization_analysis
 from obspy.core.utcdatetime import UTCDateTime
+from obspy.core import Stream
 from matplotlib.dates import date2num
 import matplotlib.pyplot as plt 
 import matplotlib.dates as md
@@ -60,12 +61,10 @@ def polarization(st):
     result = polarization_analysis(st,10,0.5,0,10,st[0].stats.starttime,st[0].stats.endtime,False,'flinn')
     return result
 
-def plot(pathfile):
-    test = read(pathfile)
+def plot(test):
     tz = test.select(component="Z")[0]
     windows = trigWindow(tz)
     paz = polarization(test)
-
     incicol = where(paz['incidence']<30,'k','k')
     rectcol = where(paz['rectilinearity']>0.7,'k','k')
     fig, ax = plt.subplots(5,sharex=True)
@@ -108,14 +107,27 @@ def plot(pathfile):
         md.ConciseDateFormatter(ax[0].xaxis.get_major_locator()))
 
     plt.subplots_adjust(hspace=.0)
-    plt.savefig('result.png')
+    plt.savefig(tz.get_id()+'.png')
     # plt.show()
 
 
+def combine(filelist):
+    st = Stream()
+    for item in filelist:
+        st += read(item)
+    latestStart = UTCDateTime(0)
+    earliestend = UTCDateTime(2147483647)
+    for tr in st:
+        latestStart = tr.stats.starttime if latestStart < tr.stats.starttime else latestStart
+        earliestend = tr.stats.endtime if earliestend > tr.stats.endtime else earliestend
+    st.trim(latestStart, earliestend)
+    return st
 @click.command()
-@click.argument('filename', type=click.Path(exists=True))
+@click.argument('filename', type=click.Path(exists=True),nargs=-1)
 def main(filename):
-    plot(filename)
+    st = combine(filename)
+    print(st)
+    plot(st)
 
 if __name__ == '__main__':
     main()
