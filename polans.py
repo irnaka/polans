@@ -1,5 +1,7 @@
+from datetime import date
 import enum
 from obspy import read
+from obspy.signal.invsim import evalresp_for_frequencies
 from obspy.signal.trigger import classic_sta_lta, trigger_onset
 from obspy.signal.polarization import polarization_analysis
 from obspy.core.utcdatetime import UTCDateTime
@@ -137,7 +139,7 @@ def plot(test, filename, winlen=20):
     incicol = where(paz['incidence']<25,'r','k')
     azicol = where(azstd<15,'r','k')
     sNoise = surfaceNoise(paz['incidence'],azstd)
-    fig, ax = plt.subplots(6,sharex=True)
+    fig, ax = plt.subplots(7,sharex=True)
     fig.set_size_inches(8, 10)
     # fig.suptitle('{}'.format(str(tz).replace('|','\n')), x=0.1,ha="left", fontsize=12)
     offset = tz.data.std()
@@ -173,6 +175,7 @@ def plot(test, filename, winlen=20):
     ax[3].set_ylim(-20,200)
     ax[4].set_ylim(-0.1,1.1)
     ax[5].set_ylim(-0.1,1.1)
+    ax[6].set_ylim(-4,1)
 
     ax[0].set_yticks([])
     ax[1].set_yticks([])
@@ -187,6 +190,7 @@ def plot(test, filename, winlen=20):
     ax[3].set_ylabel('Azimuth')
     ax[4].set_ylabel('Rectilinearity')
     ax[5].set_ylabel('Planarity')
+    ax[6].set_ylabel('Noise Composition')
 
     # ax[2].yaxis.set_label_position("right")
     ax[0].yaxis.tick_right()
@@ -195,6 +199,14 @@ def plot(test, filename, winlen=20):
     ax[3].yaxis.tick_right()
     ax[4].yaxis.tick_right()
     ax[5].yaxis.tick_right()
+    ax[6].yaxis.tick_right()
+
+    # ax[0].xaxis.tick_top()
+    # ax[1].xaxis.tick_top()
+    # ax[2].xaxis.tick_top()
+    # ax[3].xaxis.tick_top()
+    # ax[4].xaxis.tick_top()
+    # ax[5].xaxis.tick_top()
 
     # xfmt = md.DateFormatter('%Y-%m-%d %H:%M:%S')
     # ax[0].xaxis.set_major_formatter(xfmt)
@@ -203,7 +215,7 @@ def plot(test, filename, winlen=20):
         md.ConciseDateFormatter(ax[0].xaxis.get_major_locator()))
     
     report = "Data Quality Report for " + filename + " Record\n"
-    recordingLength = (tz.stats.endtime - tz.stats.starttime)/60
+    recordingLength = (tz.stats.endtime - tz.stats.starttime+1200)/60
     report += "Record duration : {:.0f} minutes ({:.0%})\n".format(recordingLength, recordingLength/recordingLength)
     report += "Effective Data : {:.0f} minutes ({:.0%})\n".format(recordingLength-20, (recordingLength-20)/recordingLength)
     transientLength = winlen*len(windows)/60
@@ -227,6 +239,30 @@ def plot(test, filename, winlen=20):
 
     fig.suptitle(report, x=0.1,ha="left", fontsize=10)
     plt.subplots_adjust(hspace=.0)
+
+    noiseSource = ['set up','transient', 'incidence', 'azimuth']
+    ypos = [[-i,-i] for i in range(len(noiseSource))]
+    noiseLevel = []
+    noiseLevel.append(date2num(efectiveStart+1200))
+    
+    startBar = date2num(efectiveEnd)
+    setupNoise = date2num(efectiveEnd-1200)
+    transientNoise = date2num(efectiveEnd-(recordingLength-20-transientLength)*60)
+    incidenceNoise = 0
+    azimuthNoise = 0
+    for i in range(len(incicol)):
+        incidenceNoise += 1 if incicol[i]=='r' else 0
+        azimuthNoise += 1 if azicol[i]=='r' else 0
+    incidenceNoise *= winlen
+    azimuthNoise *= winlen
+    incidenceNoise = date2num(efectiveEnd-incidenceNoise)
+    azimuthNoise = date2num(efectiveEnd-azimuthNoise)
+    ax[6].set_yticks([0,-1,-2,-3], labels=noiseSource)
+    ax[6].plot((startBar,setupNoise),ypos[0],linewidth=5)
+    ax[6].plot((startBar,transientNoise),ypos[1],linewidth=5)
+    ax[6].plot((startBar,incidenceNoise),ypos[2],linewidth=5)
+    ax[6].plot((startBar,azimuthNoise),ypos[3],linewidth=5)
+
     print("Generate Data Quality Control Report to "+filename+".png")
     plt.savefig(filename+'.png')
     # plt.show()
