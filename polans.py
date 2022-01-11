@@ -142,16 +142,19 @@ def plot(test, filename, winlen=20):
     fig, ax = plt.subplots(7,sharex=True)
     fig.set_size_inches(8, 10)
     # fig.suptitle('{}'.format(str(tz).replace('|','\n')), x=0.1,ha="left", fontsize=12)
-    offset = tz.data.std()
     efectiveStart = tz.stats.starttime + 600
     efectiveEnd = tz.stats.endtime - 600
-    tz.trim(efectiveStart,efectiveEnd)
-    tn.trim(efectiveStart,efectiveEnd)
-    te.trim(efectiveStart,efectiveEnd)
+    offset = tz.data.std()
     ax[0].plot(tz.times("matplotlib"),tz.data+10*offset, color='red',linewidth=0.5, label="Z")
     ax[0].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.5, label="N")
     ax[0].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.5, label="E")
     ax[0].legend()
+
+    tz.trim(efectiveStart,efectiveEnd)
+    tn.trim(efectiveStart,efectiveEnd)
+    te.trim(efectiveStart,efectiveEnd)
+    ax[0].set_ylim(min(te.data),max(tz.data)+10*offset)
+    offset = tz.data.std()
     
     tz.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
     tn.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
