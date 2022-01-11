@@ -9,6 +9,7 @@ from obspy.core import Stream
 from matplotlib.dates import date2num
 import matplotlib.pyplot as plt 
 import matplotlib.dates as md
+import matplotlib.gridspec as gridspec
 from numpy import record, where, array, median
 import click
 from os.path import basename
@@ -139,7 +140,20 @@ def plot(test, filename, winlen=20):
     incicol = where(paz['incidence']<25,'r','k')
     azicol = where(azstd<15,'r','k')
     sNoise = surfaceNoise(paz['incidence'],azstd)
-    fig, ax = plt.subplots(7,sharex=True)
+
+    # fig, ax = plt.subplots(7,sharex=True)
+    fig = plt.figure()
+    ax = []
+    spec = gridspec.GridSpec(ncols=1,nrows=8,figure=fig,height_ratios=[1,1,1,1, 1,1,0.5,1])
+    for i in range(7):
+        if i==0:
+            axtemp = fig.add_subplot(spec[i, 0])
+        elif i==6:
+            axtemp = fig.add_subplot(spec[i+1, 0])
+        else:
+            axtemp = fig.add_subplot(spec[i, 0],sharex=ax[0])
+        ax.append(axtemp)
+
     fig.set_size_inches(8, 10)
     # fig.suptitle('{}'.format(str(tz).replace('|','\n')), x=0.1,ha="left", fontsize=12)
     efectiveStart = tz.stats.starttime + 600
@@ -148,7 +162,7 @@ def plot(test, filename, winlen=20):
     ax[0].plot(tz.times("matplotlib"),tz.data+10*offset, color='red',linewidth=0.5, label="Z")
     ax[0].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.5, label="N")
     ax[0].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.5, label="E")
-    ax[0].legend()
+    leg0 = ax[0].legend()
 
     tz.trim(efectiveStart,efectiveEnd)
     tn.trim(efectiveStart,efectiveEnd)
@@ -162,7 +176,15 @@ def plot(test, filename, winlen=20):
     ax[1].plot(tz.times("matplotlib"),tz.data+10*offset, color='red',linewidth=0.5, label="Z")
     ax[1].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.5, label="N")
     ax[1].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.5, label="E")
-    ax[1].legend()
+    leg1 = ax[1].legend()
+    
+    for legobj in leg0.legendHandles:
+        legobj.set_linewidth(5.0)
+    for legobj in leg1.legendHandles:
+        legobj.set_linewidth(5.0)
+    # ax[0].legend(linewidth=6)
+    # ax[1].legend(linewidth=6)
+
     
     windowNoSurface = 0
     for i, w in enumerate(windows):
@@ -194,6 +216,7 @@ def plot(test, filename, winlen=20):
     ax[4].set_ylabel('Rectilinearity')
     ax[5].set_ylabel('Planarity')
     ax[6].set_ylabel('Noise Composition')
+    ax[6].set_xlabel('minutes')
 
     # ax[2].yaxis.set_label_position("right")
     ax[0].yaxis.tick_right()
@@ -245,12 +268,9 @@ def plot(test, filename, winlen=20):
 
     noiseSource = ['set up','transient', 'incidence', 'azimuth']
     ypos = [[-i,-i] for i in range(len(noiseSource))]
-    noiseLevel = []
-    noiseLevel.append(date2num(efectiveStart+1200))
-    
-    startBar = date2num(efectiveEnd)
-    setupNoise = date2num(efectiveEnd-1200)
-    transientNoise = date2num(efectiveEnd-(recordingLength-20-transientLength)*60)
+    startBar = 0
+    setupNoise = 1200/60
+    transientNoise = (recordingLength-20-transientLength)
     incidenceNoise = 0
     azimuthNoise = 0
     for i in range(len(incicol)):
@@ -258,8 +278,8 @@ def plot(test, filename, winlen=20):
         azimuthNoise += 1 if azicol[i]=='r' else 0
     incidenceNoise *= winlen
     azimuthNoise *= winlen
-    incidenceNoise = date2num(efectiveEnd-incidenceNoise)
-    azimuthNoise = date2num(efectiveEnd-azimuthNoise)
+    incidenceNoise = incidenceNoise/60
+    azimuthNoise = azimuthNoise/60
     ax[6].set_yticks([0,-1,-2,-3], labels=noiseSource)
     ax[6].plot((startBar,setupNoise),ypos[0],linewidth=5)
     ax[6].plot((startBar,transientNoise),ypos[1],linewidth=5)
