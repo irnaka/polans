@@ -189,8 +189,10 @@ def plot(test, filename, winlen=20):
     windowNoSurface = 0
     for i, w in enumerate(windows):
         windowNoSurface += 1 if sNoise[i] == 'k' else 0
-        ax[1].axvspan(w[0].matplotlib_date, w[1].matplotlib_date, alpha=0.5, color=sNoise[i])
+        ax[1].axvspan(w[0].matplotlib_date, w[1].matplotlib_date, alpha=0.5, facecolor=sNoise[i], edgecolor=None)
     print("{} windows with surface noise detected, removing windows".format(len(windows)-windowNoSurface))
+
+    ax[2].axhspan(0,25,alpha=0.3, facecolor='k',edgecolor=None)
     ax[2].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['incidence'], color=incicol,s=1)
     ax[3].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['azimuth'], color=azicol,s=1)
     ax[4].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['rectilinearity'], color='k',s=1)
@@ -237,9 +239,16 @@ def plot(test, filename, winlen=20):
     # xfmt = md.DateFormatter('%Y-%m-%d %H:%M:%S')
     # ax[0].xaxis.set_major_formatter(xfmt)
 
-    ax[0].xaxis.set_major_formatter(
-        md.ConciseDateFormatter(ax[0].xaxis.get_major_locator()))
-    
+    # ax[0].xaxis.set_major_formatter(
+    #     md.ConciseDateFormatter(ax[0].xaxis.get_major_locator()))
+    # ax[0].xaxis.set_major_locator(md.MinuteLocator())
+    # ax[0].xaxis.set_major_formatter(md.DateFormatter('%b %d %H:%M'))
+    # ax[0].xaxis.set_minor_formatter(md.DateFormatter('%y-%b-%d'))
+    locator = md.AutoDateLocator(minticks=5, maxticks=14)
+    formatter = md.ConciseDateFormatter(locator)
+    ax[0].xaxis.set_major_locator(locator)
+    ax[0].xaxis.set_major_formatter(formatter)
+
     report = "Data Quality Report for " + filename + " Record\n"
     recordingLength = (tz.stats.endtime - tz.stats.starttime+1200)/60
     report += "Record duration : {:.0f} minutes ({:.0%})\n".format(recordingLength, recordingLength/recordingLength)
