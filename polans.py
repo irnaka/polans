@@ -1,5 +1,6 @@
 from datetime import date
 import enum
+from turtle import rt
 from obspy import read
 from obspy.signal.invsim import evalresp_for_frequencies
 from obspy.signal.trigger import classic_sta_lta, trigger_onset
@@ -10,9 +11,19 @@ from matplotlib.dates import date2num
 import matplotlib.pyplot as plt 
 import matplotlib.dates as md
 import matplotlib.gridspec as gridspec
-from numpy import record, where, array, median
+from numpy import record, where, array, median, abs, fft, argsort, rint
 import click
 from os.path import basename
+
+def spectrum(trace):
+    time_step = 1.0/trace.stats.sampling_rate
+    ps = abs(fft.fft(trace.data))**2
+    freqs = fft.fftfreq(trace.data.size, time_step)
+    idx = argsort(freqs)
+    fresult = freqs[idx]
+    psresult = ps[idx]
+    l = int(len(fresult)/2)
+    return fresult[l:], psresult[l:]
 
 def makeWindow(tr,winlen=30):
     rectime = tr.stats.endtime-tr.stats.starttime
@@ -144,12 +155,14 @@ def plot(test, filename, winlen=20):
     # fig, ax = plt.subplots(7,sharex=True)
     fig = plt.figure()
     ax = []
-    spec = gridspec.GridSpec(ncols=1,nrows=8,figure=fig,height_ratios=[1,1,1,1, 1,1,0.5,1])
-    for i in range(7):
+    spec = gridspec.GridSpec(ncols=1,nrows=10,figure=fig,height_ratios=[1,1,1,1, 1,1,0.6,1,0.7,1])
+    for i in range(8):
         if i==0:
             axtemp = fig.add_subplot(spec[i, 0])
         elif i==6:
             axtemp = fig.add_subplot(spec[i+1, 0])
+        elif i==7:
+            axtemp = fig.add_subplot(spec[i+2, 0])
         else:
             axtemp = fig.add_subplot(spec[i, 0],sharex=ax[0])
         ax.append(axtemp)
@@ -167,6 +180,19 @@ def plot(test, filename, winlen=20):
     tz.trim(efectiveStart,efectiveEnd)
     tn.trim(efectiveStart,efectiveEnd)
     te.trim(efectiveStart,efectiveEnd)
+
+    zfreq, zspec = spectrum(tz)
+    nfreq, nspec = spectrum(tn)
+    efreq, espec = spectrum(te)
+    gap = max(zfreq)+8
+    ax[7].plot(zfreq, zspec, color='red', label="Z")
+    ax[7].plot([i+gap for i in nfreq], nspec, color='green', label="N")
+    ax[7].plot([i+gap*2 for i in efreq], espec, color='blue', label="E")
+    ax[7].set_yscale('log')
+    # ax[7].set_xscale('log')
+    ax[7].set_xticks([0,gap-8, gap, gap*2-8, gap*2, gap*3-8])
+    ax[7].set_xticklabels([0,rint(max(zfreq)),0,rint(max(nfreq)),0,rint(max(efreq))])
+
     ax[0].set_ylim(min(te.data),max(tz.data)+10*offset)
     offset = tz.data.std()
     
@@ -177,10 +203,13 @@ def plot(test, filename, winlen=20):
     ax[1].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.5, label="N")
     ax[1].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.5, label="E")
     leg1 = ax[1].legend()
+    leg7 = ax[7].legend()
     
     for legobj in leg0.legendHandles:
         legobj.set_linewidth(5.0)
     for legobj in leg1.legendHandles:
+        legobj.set_linewidth(5.0)
+    for legobj in leg7.legendHandles:
         legobj.set_linewidth(5.0)
     # ax[0].legend(linewidth=6)
     # ax[1].legend(linewidth=6)
@@ -219,6 +248,8 @@ def plot(test, filename, winlen=20):
     ax[5].set_ylabel('Planarity')
     ax[6].set_ylabel('Noise Composition')
     ax[6].set_xlabel('minutes')
+    ax[7].set_ylabel('Spectrum')
+    ax[7].set_xlabel('Hz')
 
     # ax[2].yaxis.set_label_position("right")
     ax[0].yaxis.tick_right()
@@ -228,6 +259,7 @@ def plot(test, filename, winlen=20):
     ax[4].yaxis.tick_right()
     ax[5].yaxis.tick_right()
     ax[6].yaxis.tick_right()
+    ax[7].yaxis.tick_right()
 
     # ax[0].xaxis.tick_top()
     # ax[1].xaxis.tick_top()
