@@ -289,7 +289,8 @@ def plot(test, filename, winlen=20):
     azimuthNoise *= winlen
     incidenceNoise = incidenceNoise/60
     azimuthNoise = azimuthNoise/60
-    ax[6].set_yticks([0,-1,-2,-3], labels=noiseSource)
+    ax[6].set_yticks([0,-1,-2,-3])
+    ax[6].set_yticklabels(noiseSource)
     ax[6].plot((startBar,setupNoise),ypos[0],linewidth=5)
     ax[6].plot((startBar,transientNoise),ypos[1],linewidth=5)
     ax[6].plot((startBar,incidenceNoise),ypos[2],linewidth=5)
