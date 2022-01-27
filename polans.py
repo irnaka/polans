@@ -338,6 +338,7 @@ def combine(filelist):
         st += read(item)
     latestStart = UTCDateTime(0)
     earliestend = UTCDateTime(2147483647)
+    st.merge(fill_value='latest')
     for tr in st:
         latestStart = tr.stats.starttime if latestStart < tr.stats.starttime else latestStart
         earliestend = tr.stats.endtime if earliestend > tr.stats.endtime else earliestend
