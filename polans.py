@@ -11,13 +11,14 @@ from matplotlib.dates import date2num
 import matplotlib.pyplot as plt 
 import matplotlib.dates as md
 import matplotlib.gridspec as gridspec
-from numpy import record, where, array, median, abs, fft, argsort, rint
+from numpy import record, where, array, median, abs, fft, argsort, rint, sqrt
 import click
 from os.path import basename
 
 def spectrum(trace):
     time_step = 1.0/trace.stats.sampling_rate
     ps = abs(fft.fft(trace.data))**2
+    ps = sqrt(ps)
     freqs = fft.fftfreq(trace.data.size, time_step)
     idx = argsort(freqs)
     fresult = freqs[idx]
@@ -43,9 +44,9 @@ def makeWindow(tr,winlen=30):
     print("{} windows created, {} minutes in total".format(len(windowlist),len(windowlist)*winlen/60))
     return windowlist
 
-def trigWindow(tr, winlen=30, sta=5, lta=10, head=1.3, tail=0.7):
+def trigWindow(tr, winlen=30, sta=5, lta=10, head=1.5, tail=0.7):
     wd = makeWindow(tr, winlen)
-    df = tr.stats.sampling_rate
+    df = tr.stats.sampling_rate 
     print("Detect transient noise data on every window")
     cft = classic_sta_lta(tr.data, int(sta * df), int(lta * df))
     on_of = trigger_onset(cft, head, tail)
@@ -217,6 +218,8 @@ def plot(test, filename, winlen=20):
     
     windowNoSurface = 0
     for i, w in enumerate(windows):
+        if len(sNoise)<(i+1):
+            break
         windowNoSurface += 1 if sNoise[i] == 'k' else 0
         ax[1].axvspan(w[0].matplotlib_date, w[1].matplotlib_date, alpha=0.5, facecolor=sNoise[i], edgecolor=None)
     print("{} windows with surface noise detected, removing windows".format(len(windows)-windowNoSurface))
