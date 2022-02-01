@@ -1,8 +1,5 @@
 from datetime import date
-import enum
-from turtle import rt
 from obspy import read
-from obspy.signal.invsim import evalresp_for_frequencies
 from obspy.signal.trigger import classic_sta_lta, trigger_onset
 from obspy.signal.polarization import polarization_analysis
 from obspy.core.utcdatetime import UTCDateTime
@@ -83,11 +80,16 @@ def streamCheck(st):
     else:
         return False
 
+def rotate90(inp):
+    return abs(90 - inp)
+
 def polarization(st,winlen=30):
     if not streamCheck:
         return None
     print("Begin Polarization Analysis")
     result = polarization_analysis(st,winlen,1,0,10,st[0].stats.starttime+600,st[0].stats.endtime-600,False,'flinn')
+    for i,item in enumerate(result['incidence']):
+       result['incidence'][i] = rotate90(item) 
     # print([UTCDateTime(t) for t in result['timestamp']])
     return result
 
