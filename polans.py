@@ -142,8 +142,22 @@ def surfaceNoise(inci, azim):
         lst.append(item)
     return lst
 
+def calibrate(inpstream,z=1,n=1,e=1):
+    if(z==1 and n==1 and e==1):
+        return inpstream
+    result = Stream()
+    tz = inpstream.select(component="Z")[0]
+    tn = inpstream.select(component="N")[0]
+    te = inpstream.select(component="E")[0]
+    tz.data *= z
+    result.append(tz)
+    result.append(tn)
+    result.append(te)
+    return result
 
-def plot(test, filename, winlen=20):
+
+def plot(test, filename,z=1,n=1,e=1,winlen=20):
+    test = calibrate(test,z,n,e)
     filename = basename(filename[0])
     tz = test.select(component="Z")[0]
     tn = test.select(component="N")[0]
@@ -350,11 +364,22 @@ def combine(filelist):
     st.trim(latestStart, earliestend)
     return st
 
+def parseCalOption(calstring):
+    z = int(calstring[0])
+    n = int(calstring[1])
+    e = int(calstring[2])
+    return [z,n,e]
+
 @click.command()
 @click.argument('filename', type=click.Path(exists=True),nargs=-1)
-def main(filename):
+@click.option('--calibration','-c')
+def main(filename,calibration):
     st = combine(filename)
-    plot(st, filename)
+    if not calibration:
+        plot(st, filename)
+    else:
+        [z,n,e] = parseCalOption(calibration)
+        plot(st, filename, z, n, e)
 
 if __name__ == '__main__':
     main()
