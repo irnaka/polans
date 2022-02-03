@@ -401,12 +401,23 @@ def parseCalOption(calstring):
 @click.command()
 @click.argument('filename', type=click.Path(exists=True),nargs=-1)
 @click.option('--calibration','-c')
-def main(filename,calibration):
+@click.option('--zfactor', '-z', type=float)
+@click.option('--nfactor', '-n', type=float)
+@click.option('--efactor', '-e', type=float)
+def main(filename,calibration,zfactor,nfactor,efactor):
     st = combine(filename)
-    if not calibration:
+    if not calibration and not zfactor and not nfactor and not efactor:
         plot(st, filename)
     else:
-        [z,n,e] = parseCalOption(calibration)
+        if calibration:
+            [z,n,e] = parseCalOption(calibration)
+        else:
+            z=1
+            n=1
+            e=1
+        z = zfactor if zfactor else z
+        n = nfactor if nfactor else n
+        e = efactor if efactor else e
         plot(st, filename, z, n, e)
 
 if __name__ == '__main__':
