@@ -8,7 +8,7 @@ from matplotlib.dates import date2num
 import matplotlib.pyplot as plt 
 import matplotlib.dates as md
 import matplotlib.gridspec as gridspec
-from numpy import record, where, array, median, abs, fft, argsort, rint, sqrt
+from numpy import cos, sin, angle, where, array, median, abs, fft, argsort, rint, sqrt, real;
 import click
 from os.path import basename
 
@@ -150,14 +150,42 @@ def calibrate(inpstream,z=1,n=1,e=1):
     tn = inpstream.select(component="N")[0]
     te = inpstream.select(component="E")[0]
     tz.data *= z
+    tn.data *= n
+    te.data *= e
     result.append(tz)
     result.append(tn)
     result.append(te)
     return result
 
+def P2R(A, phi):
+    return A * ( cos(phi) + sin(phi)*1j )
+
+def calibrateArray(data, calibration_factor):
+    dataf = fft.fft(data)
+    _A = abs(dataf) * calibration_factor
+    _phi = angle(dataf)
+    dataf = P2R(_A,_phi)
+    data = fft.ifft(dataf)
+    return real(data)
+
+def calibrateF(inpstream,z=1,n=1,e=1):
+    if(z==1 and n==1 and e==1):
+        return inpstream
+    result = Stream()
+    tz = inpstream.select(component="Z")[0]
+    tn = inpstream.select(component="N")[0]
+    te = inpstream.select(component="E")[0]
+    tz.data = calibrateArray(tz.data,z)
+    tn.data = calibrateArray(tn.data,n)
+    te.data = calibrateArray(te.data,e)
+    result.append(tz)
+    result.append(tn)
+    result.append(te)
+    return result
+    
 
 def plot(test, filename,z=1,n=1,e=1,winlen=20):
-    test = calibrate(test,z,n,e)
+    test = calibrateF(test,z,n,e)
     filename = basename(filename[0])
     tz = test.select(component="Z")[0]
     tn = test.select(component="N")[0]
