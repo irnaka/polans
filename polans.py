@@ -10,7 +10,8 @@ import matplotlib.dates as md
 import matplotlib.gridspec as gridspec
 from numpy import cos, sin, angle, where, array, median, abs, fft, argsort, rint, sqrt, real;
 import click
-from os.path import basename
+from os.path import basename,dirname
+from os import sep
 
 def spectrum(trace):
     time_step = 1.0/trace.stats.sampling_rate
@@ -184,8 +185,10 @@ def calibrateF(inpstream,z=1,n=1,e=1):
     return result
     
 
-def plot(test, filename,z=1,n=1,e=1,winlen=20):
+def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False):
     test = calibrateF(test,z,n,e)
+    if isexport:
+        test.write(dirname(filename[0])+sep+'precalibrated_data.mseed',format="MSEED")
     filename = basename(filename[0])
     tz = test.select(component="Z")[0]
     tn = test.select(component="N")[0]
@@ -390,6 +393,7 @@ def combine(filelist):
         latestStart = tr.stats.starttime if latestStart < tr.stats.starttime else latestStart
         earliestend = tr.stats.endtime if earliestend > tr.stats.endtime else earliestend
     st.trim(latestStart, earliestend)
+
     return st
 
 def parseCalOption(calstring):
@@ -404,8 +408,11 @@ def parseCalOption(calstring):
 @click.option('--zfactor', '-z', type=float)
 @click.option('--nfactor', '-n', type=float)
 @click.option('--efactor', '-e', type=float)
-def main(filename,calibration,zfactor,nfactor,efactor):
+@click.option('--export/--no-export', default=False)
+def main(filename,calibration,zfactor,nfactor,efactor,export):
     st = combine(filename)
+    isexport = False
+    if export: isexport=True
     if not calibration and not zfactor and not nfactor and not efactor:
         plot(st, filename)
     else:
@@ -419,6 +426,5 @@ def main(filename,calibration,zfactor,nfactor,efactor):
         n = nfactor if nfactor else n
         e = efactor if efactor else e
         plot(st, filename, z, n, e)
-
 if __name__ == '__main__':
     main()
