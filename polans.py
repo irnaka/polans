@@ -136,10 +136,10 @@ def azimuthMedis(inp, wind):
         lst.append(lst[-1])
     return array(lst)
 
-def surfaceNoise(inci, azim):
+def surfaceNoise(inci, azim, incth=25, azistdth=15):
     lst = []
     for i in range(len(inci)):
-        item = 'r' if inci[i]<25 and azim[i]<15 else 'k' #note IRNAKA: tadinya 25 diganti 15 agar konsisten dengan azicol = where(azstd<15,'r','k')
+        item = 'r' if inci[i]<incth and azim[i]<azistdth else 'k' #note IRNAKA: tadinya 25 diganti 15 agar konsisten dengan azicol = where(azstd<15,'r','k')
         lst.append(item)
     return lst
 
@@ -185,7 +185,7 @@ def calibrateF(inpstream,z=1,n=1,e=1):
     return result
     
 
-def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False):
+def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False, incth=25, azistdth=15):
     test = calibrateF(test,z,n,e)
     if isexport:
         test.write(dirname(filename[0])+sep+'precalibrated_data.mseed',format="MSEED")
@@ -196,9 +196,9 @@ def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False):
     windows = trigWindow(tz,winlen)
     paz = polarization(test,winlen)
     azstd = azimuthStd(paz["azimuth"],10)
-    incicol = where(paz['incidence']<25,'r','k')
-    azicol = where(azstd<15,'r','k')
-    sNoise = surfaceNoise(paz['incidence'],azstd)
+    incicol = where(paz['incidence']<incth,'r','k')
+    azicol = where(azstd<azistdth,'r','k')
+    sNoise = surfaceNoise(paz['incidence'],azstd, incth, azistdth)
 
     # fig, ax = plt.subplots(7,sharex=True)
     fig = plt.figure()
@@ -425,6 +425,6 @@ def main(filename,calibration,zfactor,nfactor,efactor,export):
         z = zfactor if zfactor else z
         n = nfactor if nfactor else n
         e = efactor if efactor else e
-        plot(st, filename, z, n, e)
+        plot(st, filename, z, n, e, incth=25, azistdth=15)
 if __name__ == '__main__':
     main()
