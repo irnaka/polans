@@ -139,7 +139,7 @@ def azimuthMedis(inp, wind):
 def surfaceNoise(inci, azim):
     lst = []
     for i in range(len(inci)):
-        item = 'r' if inci[i]<25 and azim[i]<25 else 'k'
+        item = 'r' if inci[i]<25 and azim[i]<15 else 'k' #note IRNAKA: tadinya 25 diganti 15 agar konsisten dengan azicol = where(azstd<15,'r','k')
         lst.append(item)
     return lst
 
