@@ -4,6 +4,7 @@ from obspy.signal.trigger import classic_sta_lta, trigger_onset
 from obspy.signal.polarization import polarization_analysis
 from obspy.core.utcdatetime import UTCDateTime
 from obspy.core import Stream
+from obspy.signal.filter import bandpass
 from matplotlib.dates import date2num
 import matplotlib.pyplot as plt 
 import matplotlib.dates as md
@@ -187,14 +188,16 @@ def calibrateF(inpstream,z=1,n=1,e=1):
 
 def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False, incth=25, azistdth=15):
     test = calibrateF(test,z,n,e)
+    test_filtered = test.copy()
+    test_filtered.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
     if isexport:
-        test.write(dirname(filename[0])+sep+'precalibrated_data.mseed',format="MSEED")
+        test.write(dirname(filename[0])+filename[0].replace('.mseed','precalibrated_data.mseed'),format="MSEED")
     filename = basename(filename[0])
     tz = test.select(component="Z")[0]
     tn = test.select(component="N")[0]
     te = test.select(component="E")[0]
     windows = trigWindow(tz,winlen)
-    paz = polarization(test,winlen)
+    paz = polarization(test_filtered,winlen)
     azstd = azimuthStd(paz["azimuth"],10)
     incicol = where(paz['incidence']<incth,'r','k')
     azicol = where(azstd<azistdth,'r','k')
@@ -425,6 +428,6 @@ def main(filename,calibration,zfactor,nfactor,efactor,export):
         z = zfactor if zfactor else z
         n = nfactor if nfactor else n
         e = efactor if efactor else e
-        plot(st, filename, z, n, e, incth=25, azistdth=15)
+        plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport)
 if __name__ == '__main__':
     main()
