@@ -1,4 +1,5 @@
 from datetime import date
+from re import L
 from obspy import read
 from obspy.signal.trigger import classic_sta_lta, trigger_onset
 from obspy.signal.polarization import polarization_analysis
@@ -13,6 +14,9 @@ from numpy import cos, sin, angle, where, array, median, abs, fft, argsort, rint
 import click
 from os.path import basename,dirname
 from os import sep
+import os
+import numpy as np
+import obspy
 
 def spectrum(trace):
     time_step = 1.0/trace.stats.sampling_rate
@@ -405,29 +409,106 @@ def parseCalOption(calstring):
     e = int(calstring[2])
     return [z,n,e]
 
+def calibrate(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle=100):
+    calibratorid = np.nan
+    data = []
+    _min_time = []
+    _max_time = []
+    for i,instrument in enumerate(filename):
+        if 'merged' in instrument:
+            if calibrator in instrument and not(calibrator==""): calibratorid=i
+            data.append(obspy.read(instrument))
+            for j,component in enumerate(data[-1]):
+                _min_time.append(component.stats.starttime)
+                _max_time.append(component.stats.endtime)
+
+    starttime = max(_min_time)
+    endtime = min(_max_time)
+    for i,instrument in enumerate(data):
+        data[i].trim(starttime,endtime)
+
+    time_window = (1/min(target_frequency))*int(min_number_of_cycle)
+    total_recording_overlap = endtime-starttime
+    number_of_window = int(np.floor(total_recording_overlap/time_window))
+    number_of_instrument = len(data)
+
+    cal = np.empty((number_of_instrument,3,number_of_window))+np.nan
+    cal_std = np.empty((number_of_instrument,3,number_of_window))+np.nan
+    _calibration_factor = np.empty((number_of_instrument,3))+np.nan
+    _calibration_factor_std = np.empty((number_of_instrument,3))+np.nan
+    calibration_factor = np.empty((number_of_instrument,3))+np.nan
+    calibration_factor_std = np.empty((number_of_instrument,3))+np.nan
+    fftfreq = np.fft.fftfreq(int(time_window*data[0][0].stats.sampling_rate)+1,d=data[0][0].stats.delta)
+    startwin = np.max(np.where(fftfreq[:int(len(fftfreq)/2)]<1))
+    endwin = np.min(np.where(fftfreq[:int(len(fftfreq)/2)]>5))
+
+    list_component = ['Z','N','E']
+
+    for ilc,lc in enumerate(list_component): 
+        # calibrating Z component
+        for iw in range(number_of_window):
+            _starttime = starttime+(iw*time_window)
+            _endtime = starttime+((iw+1)*time_window)
+            _freq_component = []
+            _calfreq_component = []
+            for ii,instrument in enumerate(data):
+                trimmed_instrument = instrument.copy()
+                trimmed_instrument.trim(_starttime,_endtime)
+                for ic,component in enumerate(trimmed_instrument):
+                    if lc in component.stats.component:
+                        _freq_component.append(np.abs(np.fft.fft(component.data)[startwin:endwin]))
+            _mean_amplitude = np.mean(_freq_component,axis=0)
+            for ifreq,freqc in enumerate(_freq_component):
+                # _calfreq_component.append(_freq_component[kalibratorid]/freqc)
+                _calfreq_component.append(_mean_amplitude/freqc)
+
+            for ii,instrument in enumerate(data):
+                cal[ii,ilc,iw] = np.median(_calfreq_component[ii])
+                cal_std[ii,ilc,iw] = np.std(_calfreq_component[ii])*100/cal[ii,ilc,iw]
+
+        for ii in range(number_of_instrument):
+            _calibration_factor[ii,ilc] = np.median(cal[ii][ilc])
+            _calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])*100/np.median(cal[ii][ilc])
+            if np.isnan(calibratorid):
+                calibration_factor[ii,ilc] = np.median(cal[ii][ilc])
+                calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])*100/np.median(cal[ii][ilc])
+            else:
+                calibration_factor[ii,ilc] = np.median(cal[ii][ilc]/cal[calibratorid][ilc])
+                calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc]/cal[calibratorid][ilc])*100/np.median(cal[ii][ilc]/cal[calibratorid][ilc])
+
+    for ii in range(number_of_instrument):
+        print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f}±{calibration_factor_std[ii,0]:7.4f}%   N:{calibration_factor[ii,1]:7.4f}±{calibration_factor_std[ii,1]:7.4f}%   E:{calibration_factor[ii,2]:7.4f}±{calibration_factor_std[ii,2]:7.4f}%")
+
 @click.command()
 @click.argument('filename', type=click.Path(exists=True),nargs=-1)
+@click.option('--mode','-m',type=str,default="QC")
 @click.option('--calibration','-c')
 @click.option('--zfactor', '-z', type=float)
 @click.option('--nfactor', '-n', type=float)
 @click.option('--efactor', '-e', type=float)
 @click.option('--export/--no-export', default=False)
-def main(filename,calibration,zfactor,nfactor,efactor,export):
-    st = combine(filename)
-    isexport = False
-    if export: isexport=True
-    if not calibration and not zfactor and not nfactor and not efactor:
-        plot(st, filename)
-    else:
-        if calibration:
-            [z,n,e] = parseCalOption(calibration)
+@click.option('--calibrator','-k',type=str,default="")
+def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator):
+    if mode=="QC":
+        st = combine(filename)
+        isexport = False
+        if export: isexport=True
+        if not calibration and not zfactor and not nfactor and not efactor:
+            plot(st, filename)
         else:
-            z=1
-            n=1
-            e=1
-        z = zfactor if zfactor else z
-        n = nfactor if nfactor else n
-        e = efactor if efactor else e
-        plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport)
+            if calibration:
+                [z,n,e] = parseCalOption(calibration)
+            else:
+                z=1
+                n=1
+                e=1
+            z = zfactor if zfactor else z
+            n = nfactor if nfactor else n
+            e = efactor if efactor else e
+            plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport)
+    elif mode=="CALIBRATION":
+        calibrate(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100)
+    else:
+        print("Not yet implemented!")
 if __name__ == '__main__':
     main()
