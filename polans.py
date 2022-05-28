@@ -409,7 +409,7 @@ def parseCalOption(calstring):
     e = int(calstring[2])
     return [z,n,e]
 
-def calibrate(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle=100):
+def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean"):
     calibratorid = np.nan
     data = []
     _min_time = []
@@ -436,8 +436,12 @@ def calibrate(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle=
     cal_std = np.empty((number_of_instrument,3,number_of_window))+np.nan
     _calibration_factor = np.empty((number_of_instrument,3))+np.nan
     _calibration_factor_std = np.empty((number_of_instrument,3))+np.nan
+    _calibration_factor_q1 = np.empty((number_of_instrument,3))+np.nan
+    _calibration_factor_q3 = np.empty((number_of_instrument,3))+np.nan
     calibration_factor = np.empty((number_of_instrument,3))+np.nan
     calibration_factor_std = np.empty((number_of_instrument,3))+np.nan
+    calibration_factor_q1 = np.empty((number_of_instrument,3))+np.nan
+    calibration_factor_q3 = np.empty((number_of_instrument,3))+np.nan
     fftfreq = np.fft.fftfreq(int(time_window*data[0][0].stats.sampling_rate)+1,d=data[0][0].stats.delta)
     startwin = np.max(np.where(fftfreq[:int(len(fftfreq)/2)]<1))
     endwin = np.min(np.where(fftfreq[:int(len(fftfreq)/2)]>5))
@@ -459,7 +463,6 @@ def calibrate(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle=
                         _freq_component.append(np.abs(np.fft.fft(component.data)[startwin:endwin]))
             _mean_amplitude = np.mean(_freq_component,axis=0)
             for ifreq,freqc in enumerate(_freq_component):
-                # _calfreq_component.append(_freq_component[kalibratorid]/freqc)
                 _calfreq_component.append(_mean_amplitude/freqc)
 
             for ii,instrument in enumerate(data):
@@ -467,17 +470,33 @@ def calibrate(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle=
                 cal_std[ii,ilc,iw] = np.std(_calfreq_component[ii])*100/cal[ii,ilc,iw]
 
         for ii in range(number_of_instrument):
-            _calibration_factor[ii,ilc] = np.median(cal[ii][ilc])
-            _calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])*100/np.median(cal[ii][ilc])
-            if np.isnan(calibratorid):
-                calibration_factor[ii,ilc] = np.median(cal[ii][ilc])
-                calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])*100/np.median(cal[ii][ilc])
-            else:
-                calibration_factor[ii,ilc] = np.median(cal[ii][ilc]/cal[calibratorid][ilc])
-                calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc]/cal[calibratorid][ilc])*100/np.median(cal[ii][ilc]/cal[calibratorid][ilc])
+            if statistic_mode=="mean":
+                _calibration_factor[ii,ilc] = np.mean(cal[ii][ilc])
+                _calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])
+                if np.isnan(calibratorid):
+                    calibration_factor[ii,ilc] = np.mean(cal[ii][ilc])
+                    calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])
+                else:
+                    calibration_factor[ii,ilc] = np.mean(cal[ii][ilc]/cal[calibratorid][ilc])
+                    calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc]/cal[calibratorid][ilc])*100/np.mean(cal[ii][ilc]/cal[calibratorid][ilc])
+            elif statistic_mode=="median":
+                _calibration_factor[ii,ilc] = np.median(cal[ii][ilc])
+                _calibration_factor_q1[ii,ilc] = np.percentile(cal[ii][ilc],25)
+                _calibration_factor_q3[ii,ilc] = np.percentile(cal[ii][ilc],75)
+                if np.isnan(calibratorid):
+                    calibration_factor[ii,ilc] = np.median(cal[ii][ilc])
+                    calibration_factor_q1[ii,ilc] = np.percentile(cal[ii][ilc],25)
+                    calibration_factor_q3[ii,ilc] = np.percentile(cal[ii][ilc],75)
+                else:
+                    calibration_factor[ii,ilc] = np.median(cal[ii][ilc]/cal[calibratorid][ilc])
+                    calibration_factor_q1[ii,ilc] = np.percentile(cal[ii][ilc]/cal[calibratorid][ilc],25)
+                    calibration_factor_q3[ii,ilc] = np.percentile(cal[ii][ilc]/cal[calibratorid][ilc],75)
 
     for ii in range(number_of_instrument):
-        print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f}±{calibration_factor_std[ii,0]:7.4f}%   N:{calibration_factor[ii,1]:7.4f}±{calibration_factor_std[ii,1]:7.4f}%   E:{calibration_factor[ii,2]:7.4f}±{calibration_factor_std[ii,2]:7.4f}%")
+        if statistic_mode=="mean":
+            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f}±{calibration_factor_std[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f}±{calibration_factor_std[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f}±{calibration_factor_std[ii,2]:7.4f}")
+        elif statistic_mode=="median":
+            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} Q1:{calibration_factor_q1[ii,0]:7.4f} Q3:{calibration_factor_q3[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f}±{calibration_factor_std[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f}±{calibration_factor_std[ii,2]:7.4f}")
 
 @click.command()
 @click.argument('filename', type=click.Path(exists=True),nargs=-1)
@@ -507,7 +526,7 @@ def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator):
             e = efactor if efactor else e
             plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport)
     elif mode=="CALIBRATION":
-        calibrate(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100)
+        calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean")
     else:
         print("Not yet implemented!")
 if __name__ == '__main__':
