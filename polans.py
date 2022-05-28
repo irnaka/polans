@@ -422,8 +422,22 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
                 _min_time.append(component.stats.starttime)
                 _max_time.append(component.stats.endtime)
 
+    if len(_min_time)<1:
+        raise IOError("error! ensure all files contain 'merged'!")
+
     starttime = max(_min_time)
     endtime = min(_max_time)
+
+    if starttime>endtime: raise IOError("error! end time is earlier than the start time. Input files are not consistent!")
+
+    print("===================================")
+    if statistic_mode=="mean":
+        print("Calculating mean calibration factor ± standard deviation")
+    elif statistic_mode=="median":
+        print("Calculating median calibration factor ± semi-IQR")
+    print(f"START TIME: {starttime}")
+    print(f"END   TIME: {endtime}")
+
     for i,instrument in enumerate(data):
         data[i].trim(starttime,endtime)
 
@@ -478,7 +492,7 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
                     calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])
                 else:
                     calibration_factor[ii,ilc] = np.mean(cal[ii][ilc]/cal[calibratorid][ilc])
-                    calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc]/cal[calibratorid][ilc])*100/np.mean(cal[ii][ilc]/cal[calibratorid][ilc])
+                    calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc]/cal[calibratorid][ilc])
             elif statistic_mode=="median":
                 _calibration_factor[ii,ilc] = np.median(cal[ii][ilc])
                 _calibration_factor_q1[ii,ilc] = np.percentile(cal[ii][ilc],25)
@@ -494,9 +508,15 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
 
     for ii in range(number_of_instrument):
         if statistic_mode=="mean":
-            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f}±{calibration_factor_std[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f}±{calibration_factor_std[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f}±{calibration_factor_std[ii,2]:7.4f}")
+            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} ±{calibration_factor_std[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f} ±{calibration_factor_std[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f} ±{calibration_factor_std[ii,2]:7.4f} {filename[ii]}")
         elif statistic_mode=="median":
-            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} Q1:{calibration_factor_q1[ii,0]:7.4f} Q3:{calibration_factor_q3[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f}±{calibration_factor_std[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f}±{calibration_factor_std[ii,2]:7.4f}")
+            # calculating semi interquartile range
+            _siqrz = (calibration_factor_q3[ii,0]-calibration_factor_q1[ii,0])/2
+            _siqrn = (calibration_factor_q3[ii,1]-calibration_factor_q1[ii,1])/2
+            _siqre = (calibration_factor_q3[ii,2]-calibration_factor_q1[ii,2])/2
+            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} ±{_siqrz:7.4f}   N:{calibration_factor[ii,1]:7.4f} ±{_siqrn:7.4f}   E:{calibration_factor[ii,2]:7.4f} ±{_siqre:7.4f} {filename[ii]}")
+            # print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} Q1:{calibration_factor_q1[ii,0]:7.4f} Q3:{calibration_factor_q3[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f} Q1:{calibration_factor_q1[ii,1]:7.4f} Q3:{calibration_factor_q3[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f} Q1:{calibration_factor_q1[ii,2]:7.4f} Q3:{calibration_factor_q3[ii,2]:7.4f}")
+    print("===================================")
 
 @click.command()
 @click.argument('filename', type=click.Path(exists=True),nargs=-1)
@@ -527,6 +547,8 @@ def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator):
             plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport)
     elif mode=="CALIBRATION":
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean")
+        print()
+        calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="median")
     else:
         print("Not yet implemented!")
 if __name__ == '__main__':
