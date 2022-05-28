@@ -1,7 +1,7 @@
 from datetime import date
 from re import L
 from obspy import read
-from obspy.signal.trigger import classic_sta_lta, trigger_onset
+from obspy.signal.trigger import classic_sta_lta, recursive_sta_lta, trigger_onset
 from obspy.signal.polarization import polarization_analysis
 from obspy.core.utcdatetime import UTCDateTime
 from obspy.core import Stream
@@ -47,11 +47,14 @@ def makeWindow(tr,winlen=30):
     print("{} windows created, {} minutes in total".format(len(windowlist),len(windowlist)*winlen/60))
     return windowlist
 
-def trigWindow(tr, winlen=30, sta=5, lta=10, head=1.5, tail=0.7):
+def trigWindow(tr, winlen=20, sta=1, lta=30, head=1.25, tail=1.0):
     wd = makeWindow(tr, winlen)
     df = tr.stats.sampling_rate 
     print("Detect transient noise data on every window")
-    cft = classic_sta_lta(tr.data, int(sta * df), int(lta * df))
+    # cft = classic_sta_lta(tr.data/np.std(np.abs(tr.data)), int(sta * df), int(lta * df))
+    _tmp_data = tr.data/np.std(np.abs(tr.data))
+     # STA/LTA calculation on a baseline corrected data
+    cft = recursive_sta_lta((_tmp_data-np.mean(_tmp_data)), int(sta * df), int(lta * df))
     on_of = trigger_onset(cft, head, tail)
     badwindow = []
     lastWindowIndex = -1
@@ -190,7 +193,7 @@ def calibrateF(inpstream,z=1,n=1,e=1):
     return result
     
 
-def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False, incth=25, azistdth=15):
+def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdth=15, trigger_on=1.25, trigger_off=1.00):
     test = calibrateF(test,z,n,e)
     test_filtered = test.copy()
     test_filtered.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
@@ -200,7 +203,7 @@ def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False, incth=25, azistdt
     tz = test.select(component="Z")[0]
     tn = test.select(component="N")[0]
     te = test.select(component="E")[0]
-    windows = trigWindow(tz,winlen)
+    windows = trigWindow(tz,winlen,head=trigger_on,tail=trigger_off)
     paz = polarization(test_filtered,winlen)
     azstd = azimuthStd(paz["azimuth"],10)
     incicol = where(paz['incidence']<incth,'r','k')
@@ -226,10 +229,10 @@ def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False, incth=25, azistdt
     # fig.suptitle('{}'.format(str(tz).replace('|','\n')), x=0.1,ha="left", fontsize=12)
     efectiveStart = tz.stats.starttime + 600
     efectiveEnd = tz.stats.endtime - 600
-    offset = tz.data.std()
-    ax[0].plot(tz.times("matplotlib"),tz.data+10*offset, color='red',linewidth=0.5, label="Z")
-    ax[0].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.5, label="N")
-    ax[0].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.5, label="E")
+    offset = np.max([tz.data.std(),tn.data.std(),te.data.std()])
+    ax[0].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.25, alpha=0.8, label="E")
+    ax[0].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.25, alpha=0.8, label="N")
+    ax[0].plot(tz.times("matplotlib"),tz.data+10*offset, color='red',linewidth=0.25, alpha=0.8, label="Z")
     leg0 = ax[0].legend()
 
     tz.trim(efectiveStart,efectiveEnd)
@@ -249,14 +252,14 @@ def plot(test, filename,z=1,n=1,e=1,winlen=20, isexport=False, incth=25, azistdt
     ax[7].set_xticklabels([0,rint(max(zfreq)),0,rint(max(nfreq)),0,rint(max(efreq))])
 
     ax[0].set_ylim(min(te.data),max(tz.data)+10*offset)
-    offset = tz.data.std()
+    offset = np.max([tz.data.std(),tn.data.std(),te.data.std()])
     
     tz.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
     tn.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
     te.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
-    ax[1].plot(tz.times("matplotlib"),tz.data+10*offset, color='red',linewidth=0.5, label="Z")
-    ax[1].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.5, label="N")
-    ax[1].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.5, label="E")
+    ax[1].plot(te.times("matplotlib"),te.data*0.5, color='blue',linewidth=0.25, alpha=0.8, label="E")
+    ax[1].plot(tn.times("matplotlib"),tn.data*0.5+5*offset, color='green',linewidth=0.25, alpha=0.8, label="N")
+    ax[1].plot(tz.times("matplotlib"),tz.data*0.5+10*offset, color='red',linewidth=0.25, alpha=0.8, label="Z")
     leg1 = ax[1].legend()
     leg7 = ax[7].legend()
     
@@ -527,13 +530,15 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
 @click.option('--efactor', '-e', type=float)
 @click.option('--export/--no-export', default=False)
 @click.option('--calibrator','-k',type=str,default="")
-def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator):
+@click.option('--trigger_on',type=float,default=2.5)
+@click.option('--trigger_off',type=float,default=1.2)
+def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,trigger_on,trigger_off):
     if mode=="QC":
         st = combine(filename)
         isexport = False
         if export: isexport=True
         if not calibration and not zfactor and not nfactor and not efactor:
-            plot(st, filename)
+            plot(st, filename,  trigger_on=trigger_on, trigger_off=trigger_off)
         else:
             if calibration:
                 [z,n,e] = parseCalOption(calibration)
@@ -544,7 +549,7 @@ def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator):
             z = zfactor if zfactor else z
             n = nfactor if nfactor else n
             e = efactor if efactor else e
-            plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport)
+            plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport, trigger_on=trigger_on, trigger_off=trigger_off)
     elif mode=="CALIBRATION":
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean")
         print()
