@@ -1,6 +1,7 @@
 from datetime import date
 from re import L
 from obspy import read
+from obspy.signal.cross_correlation import correlate,xcorr_max
 from obspy.signal.trigger import classic_sta_lta, recursive_sta_lta, trigger_onset
 from obspy.signal.polarization import polarization_analysis
 from obspy.core.utcdatetime import UTCDateTime
@@ -433,16 +434,28 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
 
     if starttime>endtime: raise IOError("error! end time is earlier than the start time. Input files are not consistent!")
 
-    print("===================================")
+    if statistic_mode=="mean":
+        print(f"|=================================================================================================|")
+        print(f"|       (    (    (    (                   (    (        (                      )  (              |")
+        print(f"|       )\ ) )\ ) )\ ) )\ )     (    (     )\ ) )\ )  (  )\ )   (      *   ) ( /(  )\ )           |")
+        print(f"|      (()/((()/((()/((()/(     )\   )\   (()/((()/(( )\(()/(   )\   ` )  /( )\())(()/(           |")
+        print(f"|       /(_))/(_))/(_))/(_))  (((_|(((_)(  /(_))/(_))((_)/(_)|(((_)(  ( )(_)|(_)\  /(_))          |")
+        print(f"|      (_)) (_))_(_)) (_))    )\___)\ _ )\(_)) (_))((_)_(_))  )\ _ )\(_(_())  ((_)(_))            |")
+        print(f"|      | |  | |_ | _ \/ __|  ((/ __(_)_\(_) |  |_ _|| _ ) _ \ (_)_\(_)_   _| / _ \| _ \           |")
+        print(f"|      | |__| __||  _/\__ \   | (__ / _ \ | |__ | | | _ \   /  / _ \   | |  | (_) |   /           |")
+        print(f"|      |____|_|  |_|  |___/    \___/_/ \_\|____|___||___/_|_\ /_/ \_\  |_|   \___/|_|_\           |")
+        print(f"|=================================================================================================|")
     if statistic_mode=="mean":
         print("Calculating mean calibration factor ± standard deviation")
     elif statistic_mode=="median":
         print("Calculating median calibration factor ± semi-IQR")
-    print(f"START TIME: {starttime}")
-    print(f"END   TIME: {endtime}")
+    print(f"START TIME          : {starttime}")
+    print(f"END TIME            : {endtime}")
+    print(f"Calibration duration: {endtime-starttime} seconds")
 
     for i,instrument in enumerate(data):
         data[i].trim(starttime,endtime)
+        data[i].filter("bandpass",freqmin=target_frequency[0],freqmax=target_frequency[1])
 
     time_window = (1/min(target_frequency))*int(min_number_of_cycle)
     total_recording_overlap = endtime-starttime
@@ -465,8 +478,10 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
 
     list_component = ['Z','N','E']
 
+    correlation_coef = np.zeros((number_of_instrument,len(list_component)))
+    suggested_shift = np.zeros((number_of_instrument,len(list_component)))
     for ilc,lc in enumerate(list_component): 
-        # calibrating Z component
+        # calibrating Z component, then N, then E
         for iw in range(number_of_window):
             _starttime = starttime+(iw*time_window)
             _endtime = starttime+((iw+1)*time_window)
@@ -487,6 +502,23 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
                 cal_std[ii,ilc,iw] = np.std(_calfreq_component[ii])*100/cal[ii,ilc,iw]
 
         for ii in range(number_of_instrument):
+            # calculating correlation coefficient
+            for ic,c in enumerate(list_component):
+                if data[ii][ilc].stats.channel[-1] == c:
+                    if np.isnan(calibratorid):
+                        # compare it with the first data
+                        _tmp1 = data[ii][ilc].data
+                        for ic2,c2 in enumerate(list_component):
+                            if data[0][ic2].stats.channel[-1] == c:
+                                _tmp2 = data[0][ic2].data/np.max(np.abs(data[0][ic2].data))
+                    else:
+                        _tmp1 = data[ii][ilc].data/np.max(np.abs(data[ii][ilc].data))
+                        for ic2,c2 in enumerate(list_component):
+                            if data[calibratorid][ic2].stats.channel[-1] == c:
+                                _tmp2 = data[calibratorid][ic2].data/np.max(np.abs(data[calibratorid][ic2].data))
+                    correlation_coef[ii,ic] = np.corrcoef(_tmp1,_tmp2)[0,1]
+                    suggested_shift[ii,ic] = xcorr_max(correlate(_tmp1,_tmp2,0))[0]
+
             if statistic_mode=="mean":
                 _calibration_factor[ii,ilc] = np.mean(cal[ii][ilc])
                 _calibration_factor_std[ii,ilc] = np.std(cal[ii][ilc])
@@ -509,17 +541,44 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
                     calibration_factor_q1[ii,ilc] = np.percentile(cal[ii][ilc]/cal[calibratorid][ilc],25)
                     calibration_factor_q3[ii,ilc] = np.percentile(cal[ii][ilc]/cal[calibratorid][ilc],75)
 
+    print(f"|=================================================================================================")
+    print(f"|ID|             Z             |             N             |             E             | Filename ")
+    print(f"|  |     Cal     | Match |Shift|     Cal     | Match |Shift|     Cal     | Match |Shift|          ")
+    print(f"|=================================================================================================")
     for ii in range(number_of_instrument):
         if statistic_mode=="mean":
-            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} ±{calibration_factor_std[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f} ±{calibration_factor_std[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f} ±{calibration_factor_std[ii,2]:7.4f} {filename[ii]}")
+            print(f"|{ii+1:02d}|{calibration_factor[ii,0]:6.4f}±{calibration_factor_std[ii,0]:6.4f}|{correlation_coef[ii,0]*100:6.2f}%|{int(np.floor(suggested_shift[ii,0])):5d}|{calibration_factor[ii,1]:6.4f}±{calibration_factor_std[ii,1]:6.4f}|{correlation_coef[ii,1]*100:6.2f}%|{int(np.floor(suggested_shift[ii,1])):5d}|{calibration_factor[ii,2]:6.4f}±{calibration_factor_std[ii,2]:6.4f}|{correlation_coef[ii,2]*100:6.2f}%|{int(np.floor(suggested_shift[ii,2])):5d}| {filename[ii]}")
         elif statistic_mode=="median":
             # calculating semi interquartile range
             _siqrz = (calibration_factor_q3[ii,0]-calibration_factor_q1[ii,0])/2
             _siqrn = (calibration_factor_q3[ii,1]-calibration_factor_q1[ii,1])/2
             _siqre = (calibration_factor_q3[ii,2]-calibration_factor_q1[ii,2])/2
-            print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} ±{_siqrz:7.4f}   N:{calibration_factor[ii,1]:7.4f} ±{_siqrn:7.4f}   E:{calibration_factor[ii,2]:7.4f} ±{_siqre:7.4f} {filename[ii]}")
-            # print(f"Alat{ii+1:02d} Z:{calibration_factor[ii,0]:7.4f} Q1:{calibration_factor_q1[ii,0]:7.4f} Q3:{calibration_factor_q3[ii,0]:7.4f}   N:{calibration_factor[ii,1]:7.4f} Q1:{calibration_factor_q1[ii,1]:7.4f} Q3:{calibration_factor_q3[ii,1]:7.4f}   E:{calibration_factor[ii,2]:7.4f} Q1:{calibration_factor_q1[ii,2]:7.4f} Q3:{calibration_factor_q3[ii,2]:7.4f}")
-    print("===================================")
+            print(f"|{ii+1:02d}|{calibration_factor[ii,0]:6.4f}±{_siqrz:6.4f}|{correlation_coef[ii,0]*100:6.2f}%|{int(np.floor(suggested_shift[ii,0])):5d}|{calibration_factor[ii,1]:6.4f}±{_siqrn:6.4f}|{correlation_coef[ii,1]*100:6.2f}%|{int(np.floor(suggested_shift[ii,1])):5d}|{calibration_factor[ii,2]:6.4f}±{_siqre:6.4f}|{correlation_coef[ii,2]*100:6.2f}%|{int(np.floor(suggested_shift[ii,2])):5d}| {filename[ii]}")
+    print(f"|=================================================================================================")
+
+def merging1compto3compfiles(filelist):
+    if len(filelist)!=3:
+        raise IOError("The number of input files must be equal to 3!")
+    st = Stream()
+    for item in filelist:
+        _tmp_st = read(item).merge(fill_value='latest')
+        if len(_tmp_st)!=1:
+            print(f"{item} has more than 1 component!")
+            raise IOError("Input error!")
+        else:
+            st += _tmp_st.copy()
+    latestStart = UTCDateTime(0)
+    earliestend = UTCDateTime(2147483647)
+    st.merge(fill_value='latest')
+    if len(st)!=3:
+        raise IOError("component duplicate is detected! Make sure that you give three single component files with different component.")
+    for tr in st:
+        latestStart = tr.stats.starttime if latestStart < tr.stats.starttime else latestStart
+        earliestend = tr.stats.endtime if earliestend > tr.stats.endtime else earliestend
+    st.trim(latestStart, earliestend)
+
+    st.write("merged.mseed",format="MSEED")
+    print("Data has been succesfully merged!")
 
 @click.command()
 @click.argument('filename', type=click.Path(exists=True),nargs=-1)
@@ -554,6 +613,10 @@ def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,tri
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean")
         print()
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="median")
+    elif mode=="MERGE":
+        print("The program will combine several single component files into a single 3 component file!")
+        print("Make sure that you only select 3 appropriate files!")
+        merging1compto3compfiles(filename)
     else:
         print("Not yet implemented!")
 if __name__ == '__main__':
