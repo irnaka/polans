@@ -417,7 +417,7 @@ def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdt
     te = test.select(component="E")[0]
     windows = trigWindow(tz,winlen,head=trigger_on,tail=trigger_off)
     paz = polarization(test_filtered,winlen)
-    azstd = azimuthStd(paz["azimuth"],10)
+    azstd = azimuthStd(paz["azimuth"],20)
     incicol = where(paz['incidence']<incth,'r','k')
     azicol = where(azstd<azistdth,'r','k')
     sNoise = surfaceNoise(paz['incidence'],azstd, incth, azistdth)
@@ -445,7 +445,9 @@ def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdt
     ax[0].plot(te.times("matplotlib"),te.data, color='blue',linewidth=0.25, alpha=0.8, label="E")
     ax[0].plot(tn.times("matplotlib"),tn.data+5*offset, color='green',linewidth=0.25, alpha=0.8, label="N")
     ax[0].plot(tz.times("matplotlib"),tz.data+10*offset, color='red',linewidth=0.25, alpha=0.8, label="Z")
-    leg0 = ax[0].legend()
+
+    minmax_axis = [min(te.times("matplotlib")),max(te.times("matplotlib"))]
+    # leg0 = ax[0].legend()
 
     tz.trim(efectiveStart,efectiveEnd)
     tn.trim(efectiveStart,efectiveEnd)
@@ -464,26 +466,25 @@ def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdt
     ax[7].set_xticklabels([0,rint(max(zfreq)),0,rint(max(nfreq)),0,rint(max(efreq))])
 
     ax[0].set_ylim(min(te.data),max(tz.data)+10*offset)
-    offset = np.max([tz.data.std(),tn.data.std(),te.data.std()])
-    
+     
     tz.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
     tn.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
     te.filter('bandpass', freqmin=1.0, freqmax=5.0, corners=2, zerophase=True)
-    ax[1].plot(te.times("matplotlib"),te.data*0.5, color='blue',linewidth=0.25, alpha=0.8, label="E")
-    ax[1].plot(tn.times("matplotlib"),tn.data*0.5+5*offset, color='green',linewidth=0.25, alpha=0.8, label="N")
-    ax[1].plot(tz.times("matplotlib"),tz.data*0.5+10*offset, color='red',linewidth=0.25, alpha=0.8, label="Z")
+    offset = np.max([tz.data.std(),tn.data.std(),te.data.std()])
+    ax[1].plot(te.times("matplotlib"),te.data*1.0, color='blue',linewidth=0.25, alpha=0.8, label="E")
+    ax[1].plot(tn.times("matplotlib"),tn.data*1.0+5*offset, color='green',linewidth=0.25, alpha=0.8, label="N")
+    ax[1].plot(tz.times("matplotlib"),tz.data*1.0+10*offset, color='red',linewidth=0.25, alpha=0.8, label="Z")
     leg1 = ax[1].legend()
     leg7 = ax[7].legend()
     
-    for legobj in leg0.legendHandles:
-        legobj.set_linewidth(5.0)
+    # for legobj in leg0.legendHandles:
+    #     legobj.set_linewidth(5.0)
     for legobj in leg1.legendHandles:
         legobj.set_linewidth(5.0)
     for legobj in leg7.legendHandles:
         legobj.set_linewidth(5.0)
     # ax[0].legend(linewidth=6)
     # ax[1].legend(linewidth=6)
-
     
     windowNoSurface = 0
     for i, w in enumerate(windows):
@@ -498,6 +499,20 @@ def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdt
     ax[3].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['azimuth'], color=azicol,s=1)
     ax[4].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['rectilinearity'], color='k',s=1)
     ax[5].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['planarity'], color='k',s=1)
+
+    ax[2].text(max(te.times("matplotlib")),25,"$\\phi_{min}=$"+f"{min(paz['incidence']):05.2f}")
+    ax[2].text(max(te.times("matplotlib")),55,"$\\phi_{max}=$"+f"{max(paz['incidence']):05.2f}")
+
+    ax[3].text(max(te.times("matplotlib")),60,"$\\theta_{min}=$"+f"{min(paz['azimuth']):05.1f}")
+    ax[3].text(max(te.times("matplotlib")),225,"$\\theta_{max}=$"+f"{max(paz['azimuth']):05.1f}")
+
+    ax[4].text(max(te.times("matplotlib")),0.2,"$rec_{min}=$"+f"{min(paz['rectilinearity']):03.2f}")
+    ax[4].text(max(te.times("matplotlib")),0.5,"$rec_{max}=$"+f"{max(paz['rectilinearity']):03.2f}")
+
+    ax[5].text(max(te.times("matplotlib")),0.2,"$pla_{min}=$"+f"{min(paz['planarity']):03.2f}")
+    ax[5].text(max(te.times("matplotlib")),0.5,"$pla_{max}=$"+f"{max(paz['planarity']):03.2f}")
+
+    ax[0].set_xlim(minmax_axis[0],minmax_axis[1])
 
     ax[2].set_ylim(-10,100)
     ax[3].set_ylim(-20,380)
@@ -819,7 +834,7 @@ def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,tri
             z = zfactor if zfactor else z
             n = nfactor if nfactor else n
             e = efactor if efactor else e
-            plot(st, filename, z, n, e, incth=25, azistdth=15, isexport=isexport, trigger_on=trigger_on, trigger_off=trigger_off)
+            plot(st, filename, z, n, e, incth=25, azistdth=20, isexport=isexport, trigger_on=trigger_on, trigger_off=trigger_off)
     elif mode=="CALIBRATION":
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean")
         print()
