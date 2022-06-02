@@ -674,7 +674,7 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
     if statistic_mode=="mean":
         print("Calculating mean calibration factor ± standard deviation")
     elif statistic_mode=="median":
-        print("Calculating median calibration factor ± semi-IQR")
+        print("Calculating median calibration factor ± 1.5*semi-interquartile range (SIR)")
     print(f"START TIME          : {starttime}")
     print(f"END TIME            : {endtime}")
     print(f"Calibration duration: {endtime-starttime} seconds")
@@ -776,9 +776,9 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
             print(f"|{ii+1:02d}|{calibration_factor[ii,0]:6.4f}±{calibration_factor_std[ii,0]:6.4f}|{correlation_coef[ii,0]*100:6.2f}%|{int(np.floor(suggested_shift[ii,0])):5d}|{calibration_factor[ii,1]:6.4f}±{calibration_factor_std[ii,1]:6.4f}|{correlation_coef[ii,1]*100:6.2f}%|{int(np.floor(suggested_shift[ii,1])):5d}|{calibration_factor[ii,2]:6.4f}±{calibration_factor_std[ii,2]:6.4f}|{correlation_coef[ii,2]*100:6.2f}%|{int(np.floor(suggested_shift[ii,2])):5d}| {filename[ii]}")
         elif statistic_mode=="median":
             # calculating semi interquartile range
-            _siqrz = (calibration_factor_q3[ii,0]-calibration_factor_q1[ii,0])/2
-            _siqrn = (calibration_factor_q3[ii,1]-calibration_factor_q1[ii,1])/2
-            _siqre = (calibration_factor_q3[ii,2]-calibration_factor_q1[ii,2])/2
+            _siqrz = (calibration_factor_q3[ii,0]-calibration_factor_q1[ii,0])*1.5/2
+            _siqrn = (calibration_factor_q3[ii,1]-calibration_factor_q1[ii,1])*1.5/2
+            _siqre = (calibration_factor_q3[ii,2]-calibration_factor_q1[ii,2])*1.5/2
             print(f"|{ii+1:02d}|{calibration_factor[ii,0]:6.4f}±{_siqrz:6.4f}|{correlation_coef[ii,0]*100:6.2f}%|{int(np.floor(suggested_shift[ii,0])):5d}|{calibration_factor[ii,1]:6.4f}±{_siqrn:6.4f}|{correlation_coef[ii,1]*100:6.2f}%|{int(np.floor(suggested_shift[ii,1])):5d}|{calibration_factor[ii,2]:6.4f}±{_siqre:6.4f}|{correlation_coef[ii,2]*100:6.2f}%|{int(np.floor(suggested_shift[ii,2])):5d}| {filename[ii]}")
     print(f"|=================================================================================================")
 
