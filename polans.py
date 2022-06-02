@@ -3,21 +3,24 @@ from re import L
 from obspy import read
 from obspy.signal.cross_correlation import correlate,xcorr_max
 from obspy.signal.trigger import classic_sta_lta, recursive_sta_lta, trigger_onset
-from obspy.signal.polarization import polarization_analysis
+# from obspy.signal.polarization import polarization_analysis
 from obspy.core.utcdatetime import UTCDateTime
 from obspy.core import Stream
 from obspy.signal.filter import bandpass
+from obspy.signal.invsim import cosine_taper
 from matplotlib.dates import date2num
 import matplotlib.pyplot as plt 
 import matplotlib.dates as md
 import matplotlib.gridspec as gridspec
 from numpy import cos, sin, angle, where, array, median, abs, fft, argsort, rint, sqrt, real;
+from numpy import rad2deg
 import click
 from os.path import basename,dirname
 from os import sep
 import os
 import numpy as np
 import obspy
+import math
 
 def spectrum(trace):
     time_step = 1.0/trace.stats.sampling_rate
@@ -92,6 +95,214 @@ def streamCheck(st):
 
 def rotate90(inp):
     return abs(90 - inp)
+
+def flinn_modified(stream, noise_thres=0):
+    mask = (stream[0][:] ** 2 + stream[1][:] ** 2 + stream[2][:] ** 2
+            ) > noise_thres
+    x = np.zeros((3, mask.sum()), dtype=np.float64)
+    # East
+    x[0, :] = stream[2][mask]
+    # North
+    x[1, :] = stream[1][mask]
+    # Z
+    x[2, :] = stream[0][mask]
+
+    covmat = np.cov(x)
+    eigvec, eigenval, v = np.linalg.svd(covmat)
+    # Rectilinearity defined after Montalbetti & Kanasewich, 1970
+    rect = 1.0 - sqrt(eigenval[1] / eigenval[0])
+    # Planarity defined after [Jurkevics1988]_
+    plan = 1.0 - (2.0 * eigenval[2] / (eigenval[1] + eigenval[0]))
+    azimuth = rad2deg(math.atan2(eigvec[0][0], eigvec[1][0]))
+    eve = sqrt(eigvec[0][0] ** 2 + eigvec[1][0] ** 2)
+    incidence = rad2deg(math.atan2(eve, eigvec[2][0]))
+    if azimuth < 0.0:
+        azimuth = 360.0 + azimuth
+    if incidence < 0.0:
+        incidence += 180.0
+    if incidence > 90.0:
+        incidence = 180.0 - incidence
+        if azimuth > 180.0:
+            azimuth -= 180.0
+        else:
+            azimuth += 180.0
+    return azimuth, incidence, rect, plan
+
+def _get_s_point(stream, stime, etime):
+    """
+    Function for computing the trace dependent start time in samples
+
+    :param stime: time to start
+    :type stime: :class:`~obspy.core.utcdatetime.UTCDateTime`
+    :param etime: time to end
+    :type etime: :class:`~obspy.core.utcdatetime.UTCDateTime`
+    :returns: spoint, epoint
+    """
+    slatest = stream[0].stats.starttime
+    eearliest = stream[0].stats.endtime
+    for tr in stream:
+        if tr.stats.starttime >= slatest:
+            slatest = tr.stats.starttime
+        if tr.stats.endtime <= eearliest:
+            eearliest = tr.stats.endtime
+
+    nostat = len(stream)
+    spoint = np.empty(nostat, dtype=np.int32)
+    epoint = np.empty(nostat, dtype=np.int32)
+    # now we have to adjust to the beginning of real start time
+    if slatest > stime:
+        msg = "Specified start time is before latest start time in stream"
+        raise ValueError(msg)
+    if eearliest < etime:
+        msg = "Specified end time is after earliest end time in stream"
+        raise ValueError(msg)
+    for i in range(nostat):
+        offset = int(((stime - slatest) / stream[i].stats.delta + 1.))
+        negoffset = int(((eearliest - etime) / stream[i].stats.delta + 1.))
+        diffstart = slatest - stream[i].stats.starttime
+        frac, _ = math.modf(diffstart)
+        spoint[i] = int(diffstart)
+        if frac > stream[i].stats.delta * 0.25:
+            msg = "Difference in start times exceeds 25% of sampling rate"
+            warnings.warn(msg)
+        spoint[i] += offset
+        diffend = stream[i].stats.endtime - eearliest
+        frac, _ = math.modf(diffend)
+        epoint[i] = int(diffend)
+        epoint[i] += negoffset
+
+    return spoint, epoint
+
+def polarization_analysis(stream, win_len, win_frac, frqlow, frqhigh, stime,
+                          etime, verbose=False, method="pm", var_noise=0.0,
+                          adaptive=True):
+    """
+    Method carrying out polarization analysis with the [Flinn1965b]_,
+    [Jurkevics1988]_, ParticleMotion, or [Vidale1986]_ algorithm.
+
+    :param stream: 3 component input data.
+    :type stream: :class:`~obspy.core.stream.Stream`
+    :param win_len: Sliding window length in seconds.
+    :type win_len: float
+    :param win_frac: Fraction of sliding window to use for step.
+    :type win_frac: float
+    :param var_noise: resembles a sphere of noise in PM where the 3C is
+        excluded
+    :type var_noise: float
+    :param frqlow: lower frequency. Only used for ``method='vidale'``.
+    :type frqlow: float
+    :param frqhigh: higher frequency. Only used for ``method='vidale'``.
+    :type frqhigh: float
+    :param stime: Start time of interest
+    :type stime: :class:`obspy.core.utcdatetime.UTCDateTime`
+    :param etime: End time of interest
+    :type etime: :class:`obspy.core.utcdatetime.UTCDateTime`
+    :param method: the method to use. one of ``"pm"``, ``"flinn"`` or
+        ``"vidale"``.
+    :type method: str
+    :param adaptive: switch for adaptive window estimation (defaults to
+        ``True``). If set to ``False``, the window will be estimated as
+        ``3 * max(1/(fhigh-flow), 1/flow)``.
+    :type adaptive: bool
+    :rtype: dict
+    :returns: Dictionary with keys ``"timestamp"`` (POSIX timestamp, can be
+        used to initialize :class:`~obspy.core.utcdatetime.UTCDateTime`
+        objects), ``"azimuth"``, ``"incidence"`` (incidence angle) and
+        additional keys depending on used method: ``"azimuth_error"`` and
+        ``"incidence_error"`` (for method ``"pm"``), ``"rectilinearity"`` and
+        ``"planarity"`` (for methods ``"flinn"`` and ``"vidale"``) and
+        ``"ellipticity"`` (for method ``"flinn"``). Under each key a
+        :class:`~numpy.ndarray` is stored, giving the respective values
+        corresponding to the ``"timestamp"`` :class:`~numpy.ndarray`.
+    """
+    if method.lower() not in ["pm", "flinn", "vidale"]:
+        msg = "Invalid method ('%s')" % method
+        raise ValueError(msg)
+
+    res = []
+
+    if stream.get_gaps():
+        msg = 'Input stream must not include gaps:\n' + str(stream)
+        raise ValueError(msg)
+
+    if len(stream) != 3:
+        msg = 'Input stream expected to be three components:\n' + str(stream)
+        raise ValueError(msg)
+
+    # check that sampling rates do not vary
+    fs = stream[0].stats.sampling_rate
+    if len(stream) != len(stream.select(sampling_rate=fs)):
+        msg = "sampling rates of traces in stream are not equal"
+        raise ValueError(msg)
+
+    if verbose:
+        print("stream contains following traces:")
+        print(stream)
+        print("stime = " + str(stime) + ", etime = " + str(etime))
+
+    spoint, _epoint = _get_s_point(stream, stime, etime)
+    if method.lower() == "vidale":
+        res = vidale_adapt(stream, var_noise, fs, frqlow, frqhigh, spoint,
+                           stime, etime)
+    else:
+        nsamp = int(win_len * fs)
+        nstep = int(nsamp * win_frac)
+        newstart = stime
+        tap = cosine_taper(nsamp, p=0.22)
+        offset = 0
+        while (newstart + (nsamp + nstep) / fs) < etime:
+            try:
+                for i, tr in enumerate(stream):
+                    dat = tr.data[spoint[i] + offset:
+                                  spoint[i] + offset + nsamp]
+                    dat = (dat - dat.mean()) * tap
+                    if tr.stats.channel[-1].upper() == "Z":
+                        z = dat.copy()
+                    elif tr.stats.channel[-1].upper() == "N":
+                        n = dat.copy()
+                    elif tr.stats.channel[-1].upper() == "E":
+                        e = dat.copy()
+                    else:
+                        msg = "Unexpected channel code '%s'" % tr.stats.channel
+                        raise ValueError(msg)
+
+                data = [z, n, e]
+            except IndexError:
+                break
+
+            # we plot against the centre of the sliding window
+            if method.lower() == "pm":
+                azimuth, incidence, error_az, error_inc = \
+                    particle_motion_odr(data, var_noise)
+                res.append(np.array([newstart.timestamp + float(nstep) / fs,
+                           azimuth, incidence, error_az, error_inc]))
+            if method.lower() == "flinn":
+                azimuth, incidence, reclin, plan = flinn_modified(data, var_noise)
+                res.append(np.array([newstart.timestamp + float(nstep) / fs,
+                                    azimuth, incidence, reclin, plan]))
+
+            if verbose:
+                print(newstart, newstart + nsamp / fs, res[-1][1:])
+            offset += nstep
+
+            newstart += float(nstep) / fs
+
+    res = np.array(res)
+
+    result_dict = {"timestamp": res[:, 0],
+                   "azimuth": res[:, 1],
+                   "incidence": res[:, 2]}
+    if method.lower() == "pm":
+        result_dict["azimuth_error"] = res[:, 3]
+        result_dict["incidence_error"] = res[:, 4]
+    elif method.lower() == "vidale":
+        result_dict["rectilinearity"] = res[:, 3]
+        result_dict["planarity"] = res[:, 4]
+        result_dict["ellipticity"] = res[:, 5]
+    elif method.lower() == "flinn":
+        result_dict["rectilinearity"] = res[:, 3]
+        result_dict["planarity"] = res[:, 4]
+    return result_dict
 
 def polarization(st,winlen=30):
     if not streamCheck:
@@ -289,7 +500,7 @@ def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdt
     ax[5].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['planarity'], color='k',s=1)
 
     ax[2].set_ylim(-10,100)
-    ax[3].set_ylim(-20,200)
+    ax[3].set_ylim(-20,380)
     ax[4].set_ylim(-0.1,1.1)
     ax[5].set_ylim(-0.1,1.1)
     ax[6].set_ylim(-4,1)
@@ -297,7 +508,7 @@ def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdt
     ax[0].set_yticks([])
     ax[1].set_yticks([])
     ax[2].set_yticks((0,45,90))
-    ax[3].set_yticks((0,90,180))
+    ax[3].set_yticks((0,90,180,270,360))
     ax[4].set_yticks((0,0.5,1))
     ax[5].set_yticks((0,0.5,1))
 
