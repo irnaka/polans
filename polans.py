@@ -322,8 +322,11 @@ def azimuthRotate(inp, rotation):
         lst.append(val)
     return array(lst)
 
-def azimuthStd(inp, wind):
+def azimuthStd(inp360, wind):
     lst = []
+    # wrap azimuth and back azimuth to avoid ambiguity
+    inp = [x if x <= 180 else x-180 for x in inp360]
+    # rotate azimuth by 90 degrees
     inp90 = azimuthRotate(inp, 90)
     for i in range(len(inp)-wind+1):
         wowL = []
