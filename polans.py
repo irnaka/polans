@@ -336,7 +336,8 @@ def azimuthStd(inp360, wind):
             wowL90.append(inp90[i+j])
         wow = array(wowL)
         wow90 = array(wowL90)
-        lst.append(min(wow.std(),wow90.std()))
+        # lst.append(min(wow.std(),wow90.std()))
+        lst.append(min((np.percentile(wow,75)-np.percentile(wow,25))/2,(np.percentile(wow90,75)-np.percentile(wow90,25))/2))
         # lst.append(wow90.std())
     for i in range(wind-1):
         lst.append(lst[-1])
@@ -503,17 +504,17 @@ def plot(test, filename,z=1,n=1,e=1,winlen=10, isexport=False, incth=25, azistdt
     ax[4].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['rectilinearity'], color='k',s=1)
     ax[5].scatter( [date2num(UTCDateTime(t)) for t in paz['timestamp']],paz['planarity'], color='k',s=1)
 
-    ax[2].text(max(te.times("matplotlib")),25,"$\\phi_{min}=$"+f"{min(paz['incidence']):05.2f}")
-    ax[2].text(max(te.times("matplotlib")),55,"$\\phi_{max}=$"+f"{max(paz['incidence']):05.2f}")
+    ax[2].text(max(te.times("matplotlib")),25,f"{min(paz['incidence']):05.2f}")
+    ax[2].text(max(te.times("matplotlib")),55,f"{max(paz['incidence']):05.2f}")
 
-    ax[3].text(max(te.times("matplotlib")),60,"$\\theta_{min}=$"+f"{min(paz['azimuth']):05.1f}")
-    ax[3].text(max(te.times("matplotlib")),225,"$\\theta_{max}=$"+f"{max(paz['azimuth']):05.1f}")
+    ax[3].text(max(te.times("matplotlib")),60,f"{min(paz['azimuth']):05.1f}")
+    ax[3].text(max(te.times("matplotlib")),225,f"{max(paz['azimuth']):05.1f}")
 
-    ax[4].text(max(te.times("matplotlib")),0.2,"$rec_{min}=$"+f"{min(paz['rectilinearity']):03.2f}")
-    ax[4].text(max(te.times("matplotlib")),0.5,"$rec_{max}=$"+f"{max(paz['rectilinearity']):03.2f}")
+    ax[4].text(max(te.times("matplotlib")),0.2,f"{min(paz['rectilinearity']):03.2f}")
+    ax[4].text(max(te.times("matplotlib")),0.5,f"{max(paz['rectilinearity']):03.2f}")
 
-    ax[5].text(max(te.times("matplotlib")),0.2,"$pla_{min}=$"+f"{min(paz['planarity']):03.2f}")
-    ax[5].text(max(te.times("matplotlib")),0.5,"$pla_{max}=$"+f"{max(paz['planarity']):03.2f}")
+    ax[5].text(max(te.times("matplotlib")),0.2,f"{min(paz['planarity']):03.2f}")
+    ax[5].text(max(te.times("matplotlib")),0.5,f"{max(paz['planarity']):03.2f}")
 
     ax[0].set_xlim(minmax_axis[0],minmax_axis[1])
 
@@ -820,13 +821,15 @@ def merging1compto3compfiles(filelist):
 @click.option('--calibrator','-k',type=str,default="")
 @click.option('--trigger_on',type=float,default=2.5)
 @click.option('--trigger_off',type=float,default=1.2)
-def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,trigger_on,trigger_off):
+@click.option('--incidence_threshold','-i', type=float, default=25.0)
+@click.option('--azimuth_threshold','-a', type=float, default=20.0)
+def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,trigger_on,trigger_off,incidence_threshold,azimuth_threshold):
     if mode=="QC":
         st = combine(filename)
         isexport = False
         if export: isexport=True
         if not calibration and not zfactor and not nfactor and not efactor:
-            plot(st, filename,  trigger_on=trigger_on, trigger_off=trigger_off)
+            plot(st, filename,  incth=incidence_threshold, azistdth=azimuth_threshold,trigger_on=trigger_on, trigger_off=trigger_off)
         else:
             if calibration:
                 [z,n,e] = parseCalOption(calibration)
@@ -837,7 +840,8 @@ def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,tri
             z = zfactor if zfactor else z
             n = nfactor if nfactor else n
             e = efactor if efactor else e
-            plot(st, filename, z, n, e, incth=25, azistdth=20, isexport=isexport, trigger_on=trigger_on, trigger_off=trigger_off)
+            
+            plot(st, filename, z, n, e, incth=incidence_threshold, azistdth=azimuth_threshold, isexport=isexport, trigger_on=trigger_on, trigger_off=trigger_off)
     elif mode=="CALIBRATION":
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean")
         print()
