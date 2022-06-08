@@ -649,7 +649,7 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
     _min_time = []
     _max_time = []
     for i,instrument in enumerate(filename):
-        if 'merged' in instrument:
+        if 'merged' in instrument.lower():
             if calibrator in instrument and not(calibrator==""): calibratorid=i
             data.append(obspy.read(instrument))
             for j,component in enumerate(data[-1]):
@@ -748,7 +748,7 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
                                 _tmp2 = data[calibratorid][ic2].data/np.max(np.abs(data[calibratorid][ic2].data))
                     _tmplen = np.min([len(_tmp1),len(_tmp2)])
                     correlation_coef[ii,ic] = np.corrcoef(_tmp1[:_tmplen],_tmp2[:_tmplen])[0,1]
-                    suggested_shift[ii,ic] = xcorr_max(correlate(_tmp1,_tmp2,0))[0]
+                    suggested_shift[ii,ic] = xcorr_max(correlate(_tmp1[:_tmplen],_tmp2[:_tmplen],0))[0]
 
             if statistic_mode=="mean":
                 _calibration_factor[ii,ilc] = np.mean(cal[ii][ilc])
