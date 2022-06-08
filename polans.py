@@ -746,7 +746,7 @@ def calibrateC(filename,calibrator="",target_frequency=[1,5],min_number_of_cycle
                         for ic2,c2 in enumerate(list_component):
                             if data[calibratorid][ic2].stats.channel[-1] == c:
                                 _tmp2 = data[calibratorid][ic2].data/np.max(np.abs(data[calibratorid][ic2].data))
-                    _tmplen = np.min(len(_tmp1),len(_tmp2))
+                    _tmplen = np.min([len(_tmp1),len(_tmp2)])
                     correlation_coef[ii,ic] = np.corrcoef(_tmp1[:_tmplen],_tmp2[:_tmplen])[0,1]
                     suggested_shift[ii,ic] = xcorr_max(correlate(_tmp1,_tmp2,0))[0]
 
