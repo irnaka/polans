@@ -310,7 +310,8 @@ def polarization(st,winlen=30):
     print("Begin Polarization Analysis")
     result = polarization_analysis(st,winlen,1,0,10,st[0].stats.starttime+600,st[0].stats.endtime-600,False,'flinn')
     for i,item in enumerate(result['incidence']):
-       result['incidence'][i] = rotate90(item) 
+       # result['incidence'][i] = rotate90(item) 
+       result['incidence'][i] = abs(item)
     # print([UTCDateTime(t) for t in result['timestamp']])
     return result
 
