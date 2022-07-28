@@ -629,7 +629,7 @@ def combine(filelist):
         st += read(item)
     latestStart = UTCDateTime(0)
     earliestend = UTCDateTime(2147483647)
-    st.merge(fill_value='latest')
+    st.merge(fill_value=None)
     for tr in st:
         latestStart = tr.stats.starttime if latestStart < tr.stats.starttime else latestStart
         earliestend = tr.stats.endtime if earliestend > tr.stats.endtime else earliestend
@@ -825,7 +825,7 @@ def merging1compto3compfiles(filelist):
 @click.option('--incidence_threshold','-i', type=float, default=25.0)
 @click.option('--azimuth_threshold','-a', type=float, default=20.0)
 def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,trigger_on,trigger_off,incidence_threshold,azimuth_threshold):
-    if mode=="QC":
+    if mode.upper()=="QC":
         st = combine(filename)
         isexport = False
         if export: isexport=True
@@ -843,11 +843,11 @@ def main(filename,mode,calibration,zfactor,nfactor,efactor,export,calibrator,tri
             e = efactor if efactor else e
             
             plot(st, filename, z, n, e, incth=incidence_threshold, azistdth=azimuth_threshold, isexport=isexport, trigger_on=trigger_on, trigger_off=trigger_off)
-    elif mode=="CALIBRATION":
+    elif mode.upper()=="CALIBRATION":
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="mean")
         print()
         calibrateC(filename,calibrator=calibrator,target_frequency=[1,5],min_number_of_cycle=100,statistic_mode="median")
-    elif mode=="MERGE":
+    elif mode.upper()=="MERGE":
         print("The program will combine several single component files into a single 3 component file!")
         print("Make sure that you only select 3 appropriate files!")
         merging1compto3compfiles(filename)
